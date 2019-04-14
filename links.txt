@@ -5,3 +5,7 @@ Some MSDN's tutorials:
 https://docs.microsoft.com/en-us/windows/mixed-reality/
 
 https://docs.microsoft.com/en-us/windows/mixed-reality/development
+
+Unity's beginners guide:
+
+https://msdn.microsoft.com/en-us/magazine/dn759441.aspx
