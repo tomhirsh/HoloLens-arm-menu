@@ -1,1 +1,7 @@
 Important links (ideas and tutorials):
+
+Some MSDN's tutorials:
+
+https://docs.microsoft.com/en-us/windows/mixed-reality/
+
+https://docs.microsoft.com/en-us/windows/mixed-reality/development
