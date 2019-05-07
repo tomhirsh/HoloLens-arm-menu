@@ -78,7 +78,11 @@ public class HandDetection : MonoBehaviour
         CONTOUR_COLOR_WHITE = new Scalar(255, 255, 255, 255);
         BIGGEST_CONTOUR_COLOR = new Scalar(0, 255, 0, 255);
         //SetColorInImage(imgMat, new Point(228, 289));
-        SetColorInImage(imgMat, new Point(x, y));
+        //SetColorInImage(imgMat, new Point(x, y));
+        // set color in image
+        Scalar hand_color = new Scalar(13, 78, 160, 0);
+        detector.SetHsvColor(hand_color);
+        Imgproc.resize(detector.GetSpectrum(), spectrumMat, SPECTRUM_SIZE);
 
         HandPoseEstimationProcess(imgMat);
 
