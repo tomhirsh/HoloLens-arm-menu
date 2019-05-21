@@ -1,11 +1,17 @@
-Important links (ideas and tutorials):
+Important links (ideas and tutorials):   
 
 Some MSDN's tutorials:
 
 https://docs.microsoft.com/en-us/windows/mixed-reality/
 
-https://docs.microsoft.com/en-us/windows/mixed-reality/development
+https://docs.microsoft.com/en-us/windows/mixed-reality/development   
 
 Unity's beginners guide:
 
 https://msdn.microsoft.com/en-us/magazine/dn759441.aspx
+
+Hand tracking using hololens (get depth position):
+
+https://ritchielozada.com/2016/09/06/microsoft-hololens-hand-tracking/
+https://github.com/ritchielozada/HoloLensHandTracking
+https://forums.hololens.com/discussion/8978/is-there-a-way-to-get-the-users-own-hand-position-when-they-put-it-into-view-of-the-hololens   
