@@ -4,19 +4,29 @@ using UnityEngine;
 using OpenCVForUnity;
 using OpenCVForUnityExample;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using System;
+using UnityEngine.XR.WSA.Input;
+using HoloToolkit.Unity;
 #if UNITY_5_3 || UNITY_5_3_OR_NEWER
 using UnityEngine.SceneManagement;
 #endif
 
-
+[RequireComponent(typeof(WebCamTextureToMatHelper))]
 public class HandDetection : MonoBehaviour
 
 {
+
+
     /// <summary>
     /// The detector.
     /// </summary>
     ColorBlobDetector detector;
 
+    /// <summary>
+    /// The texture.
+    /// </summary>
+    //Texture2D texture;
 
     /// <summary>
     /// The spectrum size.
@@ -38,6 +48,8 @@ public class HandDetection : MonoBehaviour
     /// </summary>
     Scalar CONTOUR_COLOR_WHITE;
 
+    float HAND_CONTOUR_AREA_THRESHOLD = 6000;
+
     /// <summary>
     /// The threashold slider.
     /// </summary>
@@ -53,215 +65,435 @@ public class HandDetection : MonoBehaviour
     /// </summary>
     Mat spectrumMat;
 
+    /// <summary>
+    /// The webcam texture to mat helper.
+    /// </summary>
+    WebCamTextureToMatHelper webCamTextureToMatHelper;
+    private Point armCenter = new Point(-1, -1);
+    private double armAngle = 0;
+    private Vector3 offset;
+    private Vector3 camPosition;
+
+    static float TIMER_INIT_VAL = 5.0f;
+    double deltaFor90Degrees = 10;
+
+    float distanceFromCam = 2.2f;
+    bool isHandDetected = false;
+
+    bool didHitPlane = false;
+
+    Transform[] buttonsTransforms;
+
+    GameObject camera;
+    //GameObject cube;
+    GameObject sphereColor;
+    GameObject fireEffect;
+    AudioSource audioSmoke;
+
+    float timer = -5.0f;
+
+
+    Vector3 CalculateScreenPosition(Vector3 p)
+    {
+        return (new Vector3((((float)p.x)) - 5, 5 - (((float)p.y)), 0)) * 5.0f;
+    }
+
+    double calculateDistance(Vector3 a, Vector3 b)
+    {
+        return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+    }
+
+    private void ShowPlane()
+    {
+        //Added without debugging
+        //if (gameObject.GetComponent<Renderer>().enabled)
+        //{
+        //    return;
+        //}
+        ////
+        ///
+
+        if (timer > 0)
+        {
+            return;
+        }
+
+        gameObject.GetComponent<Renderer>().enabled = true;
+        // enable all children (buttons) renderer
+        Renderer[] renderChildren = gameObject.GetComponentsInChildren<Renderer>();
+        for (int i = 0; i < renderChildren.Length; ++i)
+        {
+            renderChildren[i].GetComponent<Renderer>().enabled = true;
+        }
+    }
+
+    private void HidePlane()
+    {
+        //Added without debugging
+        //if (!gameObject.GetComponent<Renderer>().enabled)
+        //{
+        //    return;
+        //}
+        //
+
+
+
+
+        gameObject.GetComponent<Renderer>().enabled = false;
+        // disable all children (buttons) renderer
+        foreach (Renderer buttonRenderer in gameObject.GetComponentsInChildren<Renderer>())
+        {
+            buttonRenderer.enabled = false;
+        }
+    }
+
+
+    #region InteractionManager
+
+    private void InteractionManager_InteractionSourceDetected(InteractionSourceDetectedEventArgs args)
+    {
+        isHandDetected = true;
+        //if (!gameObject.GetComponent<Renderer>().enabled)
+        //    gameObject.GetComponent<Renderer>().enabled = true;
+
+        ShowPlane();
+
+        uint id = args.state.source.id;
+
+        if (args.state.sourcePose.TryGetPosition(out Vector3 pos))
+        {
+            Vector3 cameraPosition = camera.GetComponent<Camera>().transform.position;
+            gameObject.transform.position = distanceFromCam * (Vector3.Normalize(((pos - offset - cameraPosition) * 5.0f) - cameraPosition));
+        }
+    }
+
+    private void InteractionManager_InteractionSourceUpdated(InteractionSourceUpdatedEventArgs args)
+    {
+        uint id = args.state.source.id;
+
+        if (args.state.source.kind == InteractionSourceKind.Hand)
+        {
+            if (args.state.sourcePose.TryGetPosition(out Vector3 pos))
+            {
+                Vector3 cameraPosition = camera.GetComponent<Camera>().transform.position;
+                gameObject.transform.position = distanceFromCam * (Vector3.Normalize(((pos - offset - cameraPosition) * 5.0f) - cameraPosition));
+            }
+        }
+    }
+
+    private void InteractionManager_InteractionSourceLost(InteractionSourceLostEventArgs args)
+    {
+        isHandDetected = false;
+    }
+    #endregion
+
     // Start is called before the first frame update
     void Start()
     {
-        Utils.setDebugMode(true);
+        camera = GameObject.FindWithTag("MainCamera");
+        //cube = GameObject.FindWithTag("Player");
+        sphereColor = GameObject.FindWithTag("GameController");
+        fireEffect = GameObject.FindWithTag("Finish");
+        audioSmoke = GameObject.FindWithTag("Sound").GetComponent<AudioSource>();
+        buttonsTransforms = gameObject.transform.GetChild(0).GetComponentsInChildren<Transform>();
 
-        Texture2D imgTexture = Resources.Load("arm") as Texture2D;
+        InteractionManager.InteractionSourceDetected += InteractionManager_InteractionSourceDetected;
+        InteractionManager.InteractionSourceUpdated += InteractionManager_InteractionSourceUpdated;
+        InteractionManager.InteractionSourceLost += InteractionManager_InteractionSourceLost;
 
-        double x = 235;
-        double y = 329;
+        HidePlane();
 
-        Mat imgMat = new Mat(imgTexture.height, imgTexture.width, CvType.CV_8UC4);
+        webCamTextureToMatHelper = gameObject.GetComponent<WebCamTextureToMatHelper>();
 
-        Utils.texture2DToMat(imgTexture, imgMat);
-        Debug.Log("imgMat.ToString() " + imgMat.ToString());
+        webCamTextureToMatHelper.Initialize();
 
         detector = new ColorBlobDetector();
         spectrumMat = new Mat();
-        //blobColorRgba = new Scalar (255);
         blobColorHsv = new Scalar(255);
         SPECTRUM_SIZE = new Size(200, 64);
-        //SPECTRUM_SIZE = new Size(256, 256);
         CONTOUR_COLOR = new Scalar(255, 0, 0, 255);
         CONTOUR_COLOR_WHITE = new Scalar(255, 255, 255, 255);
         BIGGEST_CONTOUR_COLOR = new Scalar(0, 255, 0, 255);
-        //SetColorInImage(imgMat, new Point(228, 289));
-        //SetColorInImage(imgMat, new Point(x, y));
+
         // set color in image
-        Scalar hand_color = new Scalar(13, 78, 160, 0);
+        Scalar hand_color = new Scalar(16, 92, 177, 0);
         detector.SetHsvColor(hand_color);
         Imgproc.resize(detector.GetSpectrum(), spectrumMat, SPECTRUM_SIZE);
 
-        HandPoseEstimationProcess(imgMat);
+    }
 
-        Texture2D texture = new Texture2D(imgMat.cols(), imgMat.rows(), TextureFormat.RGBA32, false);
+    /// <summary>
+    /// Raises the web cam texture to mat helper initialized event.
+    /// </summary>
+    public void OnWebCamTextureToMatHelperInitialized()
+    {
 
-        Utils.matToTexture2D(imgMat, texture);
+        Mat webCamTextureMat = webCamTextureToMatHelper.GetMat();
 
-        gameObject.GetComponent<Renderer>().material.mainTexture = texture;
+        gameObject.transform.localScale = new Vector3(webCamTextureMat.cols(), webCamTextureMat.rows(), 1);
 
+        float width = webCamTextureMat.width();
+        float height = webCamTextureMat.height();
 
-        Utils.setDebugMode(false);
+        float widthScale = (float)Screen.width / width;
+        float heightScale = (float)Screen.height / height;
+        if (widthScale < heightScale)
+        {
+            Camera.main.orthographicSize = (width * (float)Screen.height / (float)Screen.width) / 2;
+        }
+        else
+        {
+            Camera.main.orthographicSize = height / 2;
+        }
+    }
 
+    /// <summary>
+    /// Raises the web cam texture to mat helper disposed event.
+    /// </summary>
+    public void OnWebCamTextureToMatHelperDisposed()
+    {
+        if (spectrumMat != null)
+        {
+            spectrumMat.Dispose();
+            spectrumMat = null;
+        }
+    }
+
+    public Vector3 CalculateNewPositionFromPicture(Point p)
+    {
+        //Getting the ray from the screen point where the finger is
+        Ray res = Camera.main.ViewportPointToRay(new Vector3(((float)p.x / 640.0f), 1-((float)p.y / 640.0f), Camera.main.nearClipPlane));
+        //Ray res = Camera.main.ViewportPointToRay(new Vector3(1 - ((float)p.x / 640.0f), 1 - ((float)p.y / 640.0f), Camera.main.nearClipPlane));
+        var filter = GetComponent<MeshFilter>();
+
+        //Getting a represention of the plane
+        Vector3 normal;
+        if (filter && filter.mesh.normals.Length > 0)
+        {
+            normal = filter.transform.TransformDirection(filter.mesh.normals[0]);
+            var plane = new Plane(normal, transform.position);
+
+            //Getting the intersaction between the plane and the finger (it is hitPoint)
+            float enter = 0.0f;
+            if (plane.Raycast(res, out enter))
+            {
+                Vector3 hitPoint = res.GetPoint(enter);
+                didHitPlane = true;
+                return hitPoint;
+            }
+            else
+            {
+                didHitPlane = false;
+            }
+        }
+        return new Vector3(-1, -1, -1);
+    }
+
+    private double GetRadiusOfButton(int index)
+    {
+        return gameObject.transform.GetChild(index).GetComponent<SphereCollider>().radius;
     }
 
     private void HandPoseEstimationProcess(Mat rgbaMat)
     {
-        //Imgproc.blur(mRgba, mRgba, new Size(5,5));
+        // indication for making sphere coloring better
         Imgproc.GaussianBlur(rgbaMat, rgbaMat, new OpenCVForUnity.Size(3, 3), 1, 1);
-        //Imgproc.medianBlur(mRgba, mRgba, 3);
 
         List<MatOfPoint> contours = detector.GetContours();
 
-        detector.Process(rgbaMat);
+        detector.ProcessSkin(rgbaMat);
+        detector.ProcessFinger(rgbaMat);
 
-        //                      Debug.Log ("Contours count: " + contours.Count);
-
-        if (contours.Count <= 0)
+        if (contours.Count <= 0) //TODO: Add contour size
         {
+            HidePlane();
             return;
         }
 
-        RotatedRect rect = Imgproc.minAreaRect(new MatOfPoint2f(contours[0].toArray()));
-
-        double boundWidth = rect.size.width;
-        double boundHeight = rect.size.height;
-        int boundPos = 0;
-
-        for (int i = 1; i < contours.Count; i++)
+        if (!isHandDetected)
         {
-            rect = Imgproc.minAreaRect(new MatOfPoint2f(contours[i].toArray()));
-            if (rect.size.width * rect.size.height > boundWidth * boundHeight)
+            //Debug.Log("Contour size:" + detector.HandContourSize);
+            if (detector.HandContourSize < HAND_CONTOUR_AREA_THRESHOLD)
             {
-                boundWidth = rect.size.width;
-                boundHeight = rect.size.height;
-                boundPos = i;
+                HidePlane();
+                return;
             }
+            Moments moment = Imgproc.moments(detector.HandContours[0]);
+            armCenter.x = moment.m10 / moment.m00;
+            armCenter.y = moment.m01 / moment.m00;
+
+            Ray res = Camera.main.ViewportPointToRay(new Vector3(((float)armCenter.x / 640.0f), ((float)armCenter.y / 640.0f), Camera.main.nearClipPlane));
+            gameObject.transform.position = res.GetPoint(distanceFromCam);
+
+
+            //Added without debugging!!!
+            ShowPlane();
         }
 
-        MatOfPoint contour = contours[boundPos];
+        MatOfPoint2f elipseRes = new MatOfPoint2f(detector.HandContours[0].toArray());
+        RotatedRect rotatedRect = Imgproc.fitEllipse(elipseRes);
+        elipseRes.Dispose();
+        armAngle = rotatedRect.angle;
+        detector.ArmAngle = armAngle;
+        double line_size = 0.14;
 
-        OpenCVForUnity.Rect boundRect = Imgproc.boundingRect(new MatOfPoint(contour.toArray()));
-        Imgproc.rectangle(rgbaMat, boundRect.tl(), boundRect.br(), CONTOUR_COLOR_WHITE, 2, 8, 0);
+        //The gesture is not recognized at 90 degress!
+        //if (armAngle >= 90 - deltaFor90Degrees && armAngle <= 90 + deltaFor90Degrees)
+        //{
+        //    gameObject.GetComponent<Renderer>().enabled = true;
+        //    // enable all children (buttons) renderer
+        //    Renderer[] renderChildren = gameObject.GetComponentsInChildren<Renderer>();
+        //    for (int i = 0; i < renderChildren.Length; ++i)
+        //    {
+        //        renderChildren[i].GetComponent<Renderer>().enabled = true;
+        //    }
 
-        //                      Debug.Log (
-        //                      " Row start [" + 
-        //                              (int)boundRect.tl ().y + "] row end [" +
-        //                              (int)boundRect.br ().y + "] Col start [" +
-        //                              (int)boundRect.tl ().x + "] Col end [" +
-        //                              (int)boundRect.br ().x + "]");
+        //    Moments moment1 = Imgproc.moments(detector.HandContours[0]);
+        //    armCenter.x = moment1.m10 / moment1.m00;
+        //    armCenter.y = moment1.m01 / moment1.m00;
 
+        //    Vector3 offset = CalculateNewPositionFromPicture(armCenter);
+        //    Vector3 newHandPosition = gameObject.transform.position + offset - previousOffset;
+        //    newHandPosition.z = 4;
+        //    gameObject.transform.position = newHandPosition;
 
-        double a = boundRect.br().y - boundRect.tl().y;
-        a = a * 0.7;
-        a = boundRect.tl().y + a;
+        //    gameObject.GetComponent<Transform>().rotation = Quaternion.Euler(-25, 0, 0);
 
-        //                      Debug.Log (
-        //                      " A [" + a + "] br y - tl y = [" + (boundRect.br ().y - boundRect.tl ().y) + "]");
+        //    return;
+        //}
+        //else if (armAngle == 0)
+        //{
+        //    gameObject.GetComponent<Renderer>().enabled = false;
+        //    // disable all children (buttons) renderer
+        //    Renderer[] renderChildren = gameObject.GetComponentsInChildren<Renderer>();
+        //    for (int i = 0; i < renderChildren.Length; ++i)
+        //    {
+        //        renderChildren[i].GetComponent<Renderer>().enabled = false;
+        //    }
 
-        Imgproc.rectangle(rgbaMat, boundRect.tl(), new Point(boundRect.br().x, a), CONTOUR_COLOR, 2, 8, 0);
+        //}
 
-        MatOfPoint2f pointMat = new MatOfPoint2f();
-        Imgproc.approxPolyDP(new MatOfPoint2f(contour.toArray()), pointMat, 3, true);
-        contour = new MatOfPoint(pointMat.toArray());
+        //Debug.Log("Arm angle: " + armAngle.ToString());
 
-        MatOfInt hull = new MatOfInt();
-        MatOfInt4 convexDefect = new MatOfInt4();
-        Imgproc.convexHull(new MatOfPoint(contour.toArray()), hull);
+        if (armAngle > 90)
+        {
+            armAngle -= 180;
+            offset = new Vector3((float)(-Math.Abs(line_size * Math.Sin((Math.PI / 180) * (armAngle)))),
+                Math.Abs((float)(line_size * Math.Cos((Math.PI / 180) * (-armAngle)))), 0);
+        }
+        else {
+            offset = new Vector3(Math.Abs((float)(line_size * Math.Sin((Math.PI / 180) * (-armAngle)))),
+                Math.Abs((float)(line_size * Math.Cos((Math.PI / 180) * (-armAngle)))), 0);
+        }
 
-        if (hull.toArray().Length < 3)
+        Vector3 cameraRotation = (camera.GetComponent<Camera>().transform.rotation).eulerAngles;
+
+        if (cameraRotation.y > 105 && cameraRotation.y < 260)
+        {
+            offset.x *= -1;
+        }
+
+        Point p = detector.NearestPoint;
+
+        if (p.x == -1 || p.y == -1 || (detector.NearestPoint.x < 0) || !gameObject.GetComponent<Renderer>().enabled)
+        {
+            //cube.GetComponent<Renderer>().enabled = false;
             return;
-
-        Imgproc.convexityDefects(new MatOfPoint(contour.toArray()), hull, convexDefect);
-
-        List<MatOfPoint> hullPoints = new List<MatOfPoint>();
-        List<Point> listPo = new List<Point>();
-        for (int j = 0; j < hull.toList().Count; j++)
-        {
-            listPo.Add(contour.toList()[hull.toList()[j]]);
         }
 
-        MatOfPoint e = new MatOfPoint();
-        e.fromList(listPo);
-        hullPoints.Add(e);
+        // newPosition is the position of the finger
+        Vector3 newPosition = CalculateNewPositionFromPicture(detector.NearestPoint);
 
-        List<Point> listPoDefect = new List<Point>();
-
-        if (convexDefect.rows() > 0)
+        if (!didHitPlane)
         {
-            List<int> convexDefectList = convexDefect.toList();
-            List<Point> contourList = contour.toList();
-            for (int j = 0; j < convexDefectList.Count; j = j + 4)
+            return;
+        }
+        
+        //cube.transform.position = newPosition;
+        //cube.GetComponent<Renderer>().enabled = true;
+
+        // first button
+        Vector3 buttonPos1 = gameObject.transform.GetChild(0).position;
+        newPosition.z = buttonPos1.z = 0;
+        // second button
+        Vector3 buttonPos2 = gameObject.transform.GetChild(1).position;
+        // partical system - animation while pressing buttons
+
+        double safeYDistance = 0.05; 
+        double safeXDistance = 1.0;
+
+        if (sphereColor != null)
+        {
+            if ((Math.Abs(newPosition.y - buttonPos1.y) <= safeYDistance) && (Math.Abs(newPosition.x - buttonPos1.x) <= safeXDistance))
             {
-                Point farPoint = contourList[convexDefectList[j + 2]];
-                int depth = convexDefectList[j + 3];
-                //if (depth > threasholdSlider.value && farPoint.y < a)
-                if (farPoint.y < a)
-                {
-                    listPoDefect.Add(contourList[convexDefectList[j + 2]]);
-                }
-                //                              Debug.Log ("convexDefectList [" + j + "] " + convexDefectList [j + 3]);
+                // pressing button. do something
+                PressButton(Color.yellow, 0);
             }
-        }
-
-
-        //                      Debug.Log ("hull: " + hull.toList ());
-        //                      if (convexDefect.rows () > 0) {
-        //                          Debug.Log ("defects: " + convexDefect.toList ());
-        //                      }
-
-        Imgproc.drawContours(rgbaMat, detector.HandContours , 0, BIGGEST_CONTOUR_COLOR, 3);
-        Imgproc.drawContours(rgbaMat, hullPoints, -1, CONTOUR_COLOR, 3);
-
-        //                      int defectsTotal = (int)convexDefect.total();
-        //                      Debug.Log ("Defect total " + defectsTotal);
-
-        foreach (Point p in listPoDefect)
-        {
-            Imgproc.circle(rgbaMat, p, 6, new Scalar(255, 0, 255, 255), -1);
+            else if ((Math.Abs(newPosition.y - buttonPos2.y) <= safeYDistance) && Math.Abs(newPosition.x - buttonPos2.x) <= safeXDistance)
+            {
+                // pressing button. do something
+                PressButton(Color.red, 1);
+            }
         }
     }
 
-    private void SetColorInImage(Mat img, Point touchPoint)
+    private void PressButton(Color colorButton, int indexButton)
     {
-        int cols = img.cols();
-        int rows = img.rows();
-
-        int x = (int)touchPoint.x;
-        int y = (int)touchPoint.y;
-
-        //Debug.Log ("Touch image coordinates: (" + x + ", " + y + ")");
-
-        if ((x < 0) || (y < 0) || (x > cols) || (y > rows))
-            return;
-
-        OpenCVForUnity.Rect touchedRect = new OpenCVForUnity.Rect();
-
-        touchedRect.x = (x > 5) ? x - 5 : 0;
-        touchedRect.y = (y > 5) ? y - 5 : 0;
-
-        touchedRect.width = (x + 5 < cols) ? x + 5 - touchedRect.x : cols - touchedRect.x;
-        touchedRect.height = (y + 5 < rows) ? y + 5 - touchedRect.y : rows - touchedRect.y;
-
-        using (Mat touchedRegionRgba = img.submat(touchedRect))
-        using (Mat touchedRegionHsv = new Mat())
-        {
-            Imgproc.cvtColor(touchedRegionRgba, touchedRegionHsv, Imgproc.COLOR_RGB2HSV_FULL);
-
-            // Calculate average color of touched region
-            blobColorHsv = Core.sumElems(touchedRegionHsv);
-            int pointCount = touchedRect.width * touchedRect.height;
-            for (int i = 0; i < blobColorHsv.val.Length; i++)
-                blobColorHsv.val[i] /= pointCount;
-
-            //blobColorRgba = ConverScalarHsv2Rgba (blobColorHsv);            
-            //Debug.Log ("Touched rgba color: (" + mBlobColorRgba.val [0] + ", " + mBlobColorRgba.val [1] +
-            //  ", " + mBlobColorRgba.val [2] + ", " + mBlobColorRgba.val [3] + ")");
-
-            detector.SetHsvColor(blobColorHsv);
-
-            Imgproc.resize(detector.GetSpectrum(), spectrumMat, SPECTRUM_SIZE);
-
-        }
+        ParticleSystem fireSystem = fireEffect.GetComponent<ParticleSystem>();
+        //var fireMainModule = fireSystem.main;
+        sphereColor.GetComponent<Renderer>().material.color = colorButton;
+        fireEffect.GetComponent<Transform>().position = gameObject.transform.GetChild(indexButton).position;
+        fireSystem?.Play();
+        audioSmoke.Play();
+        timer = 1.0f;
+        HidePlane();
     }
+
+    private void LateUpdate()
+    {
+        if (armAngle >= 88 || armAngle<=-88)
+        {
+            armAngle = 90;
+        } 
+        //if (armAngle <= -88)
+        //{
+        //    armAngle = -90;
+        //}
+        transform.rotation = Quaternion.LookRotation(-Camera.main.transform.up, -Camera.main.transform.forward);
+        //gameObject.transform.Rotate(-25.0f, 0, 0);
+        Vector3 normal = Vector3.Normalize(camera.transform.position - gameObject.transform.position);
+        //Debug.Log("Normal: " + normal.ToString());
+        gameObject.transform.RotateAround(gameObject.transform.position, normal, (float)(armAngle));
+    }
+
 
     // Update is called once per frame
     void Update()
     {
-        
+#if ((UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR)
+            //Touch
+            int touchCount = Input.touchCount;
+            if (touchCount == 1)
+            {
+                Touch t = Input.GetTouch(0);
+                if(t.phase == TouchPhase.Ended && !EventSystem.current.IsPointerOverGameObject(t.fingerId)){
+                    storedTouchPoint = new Point (t.position.x, t.position.y);
+                    //Debug.Log ("touch X " + t.position.x);
+                    //Debug.Log ("touch Y " + t.position.y);
+                }
+            }
+#else
+        //Mouse
+#endif
+        timer -= Time.deltaTime;
+
+        if (webCamTextureToMatHelper.IsPlaying() && webCamTextureToMatHelper.DidUpdateThisFrame())
+        {
+            Mat rgbaMat = webCamTextureToMatHelper.GetMat();
+            HandPoseEstimationProcess(rgbaMat);
+        }
     }
+
 
     /// <summary>
     /// Raises the destroy event.
@@ -275,5 +507,8 @@ public class HandDetection : MonoBehaviour
             spectrumMat.Dispose();
             spectrumMat = null;
         }
+        InteractionManager.InteractionSourceDetected -= InteractionManager_InteractionSourceDetected;
+        InteractionManager.InteractionSourceUpdated -= InteractionManager_InteractionSourceUpdated;
+        InteractionManager.InteractionSourceLost -= InteractionManager_InteractionSourceLost;
     }
 }
