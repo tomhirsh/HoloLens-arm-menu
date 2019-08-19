@@ -1,7 +1,9 @@
 import cv2
 import numpy as np
 import math
+import imutils
 import os
+import pdb
 
 # colors declaration
 # buttons color
@@ -81,7 +83,7 @@ def process_finger(bgr_image):
     # cv2.drawContours(bgr_image, [contour], -1, 255, -1)
     # cv2.imwrite('arm_new.jpg', image)
 
-    print("finger angle: " + str(angle))
+    #print("finger angle: " + str(angle))
     return contour, center, angle, mask_HSV
 
 
@@ -117,6 +119,8 @@ def check_pressed_button(image_menu_nmergerd, touch_point, color):
     mask_color = cv2.inRange(image_menu_nmergerd, color_low, color_high)
     if mask_color[touch_point[1], touch_point[0]] > 0:
         print("pressed "+color)
+        return True
+    return False
 
 
 #image = cv2.imread("images/hand5.jpg")
@@ -157,7 +161,7 @@ def process_image(image_name, folder_src, folder_dst, alpha, pressed_color, fade
         pressed_blue = check_pressed_button(image_menu_nmergerd, touch_point, "blue")
         pressed_red = check_pressed_button(image_menu_nmergerd, touch_point, "red")
         image[mask_finger == 255] = image2[mask_finger == 255]
-        cv2.circle(image, (touch_point[0], touch_point[1]), 7, [100, 200, 200], 7)
+        #cv2.circle(image, (touch_point[0], touch_point[1]), 7, [100, 200, 200], 7)
         if pressed_blue:
             pressed_color = (255, 0, 0)
         if pressed_red:
@@ -165,6 +169,7 @@ def process_image(image_name, folder_src, folder_dst, alpha, pressed_color, fade
 
     if pressed_blue or pressed_red or alpha > 0:
         overlay = image.copy()
+        #print("button pressed"+str(pressed_color))
         cv2.putText(overlay, "BUTTON PRESSED",(10, 100), cv2.FONT_HERSHEY_TRIPLEX, 4.0, pressed_color, 6)
         cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
         if fade_in:
@@ -184,7 +189,7 @@ def process_image(image_name, folder_src, folder_dst, alpha, pressed_color, fade
 menu = cv2.imread("menu_color_changer_small.png", 1)
 scale = 0.3
 menu = cv2.resize(menu,(math.floor(menu.shape[1]*scale),math.floor(menu.shape[0]*scale)))
-folder = 'C:\\Users\\Tom\\Documents\\Learning_stuff\\semester 8\\AR_project\\video'
+folder = 'C:\\Users\\tomhgip\\HoloLens-arm-menu\\python\\video'
 folder_src = folder+'\\ortal_in'
 folder_dst = folder+'\\out'
 # print(folder_src)
