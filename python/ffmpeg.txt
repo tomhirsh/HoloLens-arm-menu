@@ -1,0 +1,5 @@
+convert video to images
+ffmpeg -i video.mp4 -r 40 -f image2 ffmpeg_temp/%05d.png
+
+convert images to video
+ffmpeg -r 40 -i ffmpeg_out/%05d.png -vcodec libx264 -crf 20 -pix_fmt yuv420p video6.mp4
