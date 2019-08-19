@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import imutils
 import math
 import os
 
@@ -22,7 +21,6 @@ min_YCrCb = np.array([0, 130, 67])
 max_YCrCb = np.array([255, 173, 133])
 min_RGB = np.array([0, 0, 0])
 max_RGB = np.array([255, 255, 150])
-menu = cv2.imread("menu_color_changer_small.png", 1)
 
 
 def nearest_point(arm_contour, arm_angle, finger_contour):
@@ -182,17 +180,21 @@ def process_image(image_name, folder_src, folder_dst, alpha, pressed_color, fade
     cv2.imwrite(image_path, image)
     return alpha, fade_in, pressed_color
 
+
+menu = cv2.imread("menu_color_changer_small.png", 1)
+scale = 0.3
+menu = cv2.resize(menu,(math.floor(menu.shape[1]*scale),math.floor(menu.shape[0]*scale)))
 folder = 'C:\\Users\\Tom\\Documents\\Learning_stuff\\semester 8\\AR_project\\video'
-folder_src = folder+'\\ffmpeg_temp'
-folder_dst = folder+'\\ffmpeg_out2'
+folder_src = folder+'\\ortal_in'
+folder_dst = folder+'\\out'
 # print(folder_src)
-count = 0
+# count = 0
 alpha = 0
 fade_in = True
 pressed_color = (0, 0, 0)
 images_list = os.listdir(folder_src)
 for image in images_list:
     alpha, fade_in, pressed_color = process_image(image, folder_src, folder_dst, alpha, pressed_color, fade_in)
-    count += 1
-    if count == 10:
-        exit()
+    # count += 1
+    # if count == 1:
+    #     exit()
